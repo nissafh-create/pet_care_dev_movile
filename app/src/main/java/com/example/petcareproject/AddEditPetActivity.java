@@ -15,7 +15,9 @@ import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.example.petcareproject.models.Pet;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 public class AddEditPetActivity extends AppCompatActivity {
 
@@ -26,12 +28,17 @@ public class AddEditPetActivity extends AppCompatActivity {
 
     private String petId;
     private final String[] speciesList = {"Dog", "Cat", "Bird", "Rabbit"};
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_add_edit_pet);
+
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -59,28 +66,35 @@ public class AddEditPetActivity extends AppCompatActivity {
         }
 
         tvBack.setOnClickListener(v -> finish());
-
         btnSavePet.setOnClickListener(v -> savePet());
     }
 
     private void loadPet(String id) {
-        Pet pet = FakeDataManager.getPetById(id);
-        if (pet == null) return;
+        db.collection("pets").document(id).get()
+                .addOnSuccessListener(doc -> {
+                    if (doc.exists()) {
+                        Pet pet = doc.toObject(Pet.class);
+                        if (pet != null) {
+                            etPetName.setText(pet.getName());
+                            etBreed.setText(pet.getBreed());
+                            etAge.setText(String.valueOf(pet.getAge()));
+                            etSpecialNeeds.setText(pet.getSpecialNeeds());
 
-        etPetName.setText(pet.getName());
-        etBreed.setText(pet.getBreed());
-        etAge.setText(String.valueOf(pet.getAge()));
-        etSpecialNeeds.setText(pet.getSpecialNeeds());
-
-        for (int i = 0; i < speciesList.length; i++) {
-            if (speciesList[i].equalsIgnoreCase(pet.getSpecies())) {
-                spSpecies.setSelection(i);
-                break;
-            }
-        }
+                            for (int i = 0; i < speciesList.length; i++) {
+                                if (speciesList[i].equalsIgnoreCase(pet.getSpecies())) {
+                                    spSpecies.setSelection(i);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                });
     }
 
     private void savePet() {
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
+
         String name = etPetName.getText().toString().trim();
         String species = spSpecies.getSelectedItem().toString();
         String breed = etBreed.getText().toString().trim();
@@ -105,10 +119,31 @@ public class AddEditPetActivity extends AppCompatActivity {
             specialNeeds = "None";
         }
 
-        Pet pet = new Pet(petId, FakeDataManager.currentOwnerId, name, species, breed, age, specialNeeds);
-        // TODO Firebase: save pet document in pets collection
-        FakeDataManager.savePet(pet);
-        Toast.makeText(getApplicationContext(), "Pet saved!", Toast.LENGTH_LONG).show();
-        finish();
+        btnSavePet.setEnabled(false);
+        Pet pet = new Pet(petId, currentUser.getUid(), name, species, breed, age, specialNeeds);
+
+        if (petId == null || petId.isEmpty()) {
+            db.collection("pets").add(pet)
+                    .addOnSuccessListener(docRef -> {
+                        docRef.update("petId", docRef.getId());
+                        Toast.makeText(getApplicationContext(), "Pet saved!", Toast.LENGTH_LONG).show();
+                        finish();
+                    })
+                    .addOnFailureListener(e -> {
+                        btnSavePet.setEnabled(true);
+                        Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    });
+        } else {
+            pet.setPetId(petId);
+            db.collection("pets").document(petId).set(pet)
+                    .addOnSuccessListener(aVoid -> {
+                        Toast.makeText(getApplicationContext(), "Pet updated!", Toast.LENGTH_LONG).show();
+                        finish();
+                    })
+                    .addOnFailureListener(e -> {
+                        btnSavePet.setEnabled(true);
+                        Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    });
+        }
     }
 }

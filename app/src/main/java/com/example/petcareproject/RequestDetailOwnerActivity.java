@@ -22,6 +22,14 @@ import com.example.petcareproject.models.Pet;
 import com.example.petcareproject.models.User;
 import com.example.petcareproject.utils.Constants;
 import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class RequestDetailOwnerActivity extends AppCompatActivity {
 
@@ -32,12 +40,18 @@ public class RequestDetailOwnerActivity extends AppCompatActivity {
     private Button btnViewApplicants, btnMarkCompleted, btnCancelRequest;
 
     private String requestId;
+    private CareRequest currentRequest;
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_request_detail_owner);
+
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -104,56 +118,85 @@ public class RequestDetailOwnerActivity extends AppCompatActivity {
     }
 
     private void loadDetails() {
-        CareRequest req = FakeDataManager.getRequestById(requestId);
-        if (req == null) return;
+        if (requestId == null) return;
 
-        tvPetTitle.setText(req.getPetName() + " • " + req.getPetSpecies());
-        tvStatus.setText(req.getStatus());
-        tvCityDates.setText(req.getCity() + " • " + req.getStartDate() + " → " + req.getEndDate());
+        db.collection("careRequests").document(requestId).get()
+                .addOnSuccessListener(doc -> {
+                    if (!doc.exists()) return;
+                    currentRequest = doc.toObject(CareRequest.class);
+                    if (currentRequest == null) return;
+                    currentRequest.setRequestId(doc.getId());
 
-        long days = FakeDataManager.calculateDays(req.getStartDate(), req.getEndDate());
-        int total = (int) (days * req.getPricePerDay());
-        tvPriceTotal.setText((int) req.getPricePerDay() + " TND/day • " + total + " TND total");
-        tvDescription.setText(req.getDescription());
+                    tvPetTitle.setText(currentRequest.getPetName() + " • " + currentRequest.getPetSpecies());
+                    tvStatus.setText(currentRequest.getStatus());
+                    tvCityDates.setText(currentRequest.getCity() + " • " + currentRequest.getStartDate() + " → " + currentRequest.getEndDate());
 
-        Pet pet = FakeDataManager.getPetById(req.getPetId());
-        if (pet != null) {
-            tvBreedAge.setText(pet.getBreed() + ", " + pet.getAge() + " years");
-        }
+                    long days = FakeDataManager.calculateDays(currentRequest.getStartDate(), currentRequest.getEndDate());
+                    int total = (int) (days * currentRequest.getPricePerDay());
+                    tvPriceTotal.setText((int) currentRequest.getPricePerDay() + " TND/day • " + total + " TND total");
+                    tvDescription.setText(currentRequest.getDescription());
 
-        int count = FakeDataManager.getApplicationsForRequest(requestId).size();
-        tvApplicantsCount.setText(count + " applicants applied");
+                    // Load pet breed/age
+                    if (currentRequest.getPetId() != null) {
+                        db.collection("pets").document(currentRequest.getPetId()).get()
+                                .addOnSuccessListener(petDoc -> {
+                                    if (petDoc.exists()) {
+                                        Pet pet = petDoc.toObject(Pet.class);
+                                        if (pet != null) {
+                                            tvBreedAge.setText(pet.getBreed() + ", " + pet.getAge() + " years");
+                                        }
+                                    }
+                                });
+                    }
 
-        if (req.getChosenSitterId() != null) {
-            User sitter = FakeDataManager.getUserById(req.getChosenSitterId());
-            if (sitter != null) {
-                layoutChosenSitter.setVisibility(View.VISIBLE);
-                tvSitterName.setText(sitter.getFullName());
-                tvSitterInfo.setText(sitter.getCity() + " • ★ " + sitter.getAverageRating());
-                if (!sitter.getFullName().isEmpty()) {
-                    tvSitterInitial.setText(String.valueOf(sitter.getFullName().charAt(0)).toUpperCase());
-                }
-            }
-        } else {
-            layoutChosenSitter.setVisibility(View.GONE);
-        }
+                    // Count applicants
+                    db.collection("applications").whereEqualTo("requestId", requestId).get()
+                            .addOnSuccessListener(snaps -> {
+                                int count = snaps != null ? snaps.size() : 0;
+                                tvApplicantsCount.setText(count + " applicants applied");
+                            });
 
-        // Show buttons only when status allows
-        if (Constants.STATUS_CONFIRMED.equals(req.getStatus())) {
-            btnMarkCompleted.setVisibility(View.VISIBLE);
-        } else {
-            btnMarkCompleted.setVisibility(View.GONE);
-        }
+                    // Chosen sitter
+                    if (currentRequest.getChosenSitterId() != null) {
+                        db.collection("users").document(currentRequest.getChosenSitterId()).get()
+                                .addOnSuccessListener(userDoc -> {
+                                    if (userDoc.exists()) {
+                                        User sitter = userDoc.toObject(User.class);
+                                        if (sitter != null) {
+                                            layoutChosenSitter.setVisibility(View.VISIBLE);
+                                            tvSitterName.setText(sitter.getFullName());
+                                            tvSitterInfo.setText(sitter.getCity() + " • ★ " + sitter.getAverageRating());
+                                            if (sitter.getFullName() != null && !sitter.getFullName().isEmpty()) {
+                                                tvSitterInitial.setText(String.valueOf(sitter.getFullName().charAt(0)).toUpperCase());
+                                            }
+                                        }
+                                    }
+                                });
+                    } else {
+                        layoutChosenSitter.setVisibility(View.GONE);
+                    }
 
-        if (Constants.STATUS_OPEN.equals(req.getStatus()) || Constants.STATUS_CONFIRMED.equals(req.getStatus())) {
-            btnCancelRequest.setVisibility(View.VISIBLE);
-        } else {
-            btnCancelRequest.setVisibility(View.GONE);
-        }
+                    // Buttons visibility
+                    if (Constants.STATUS_CONFIRMED.equals(currentRequest.getStatus())) {
+                        btnMarkCompleted.setVisibility(View.VISIBLE);
+                    } else {
+                        btnMarkCompleted.setVisibility(View.GONE);
+                    }
+
+                    if (Constants.STATUS_OPEN.equals(currentRequest.getStatus()) || Constants.STATUS_CONFIRMED.equals(currentRequest.getStatus())) {
+                        btnCancelRequest.setVisibility(View.VISIBLE);
+                    } else {
+                        btnCancelRequest.setVisibility(View.GONE);
+                    }
+                });
     }
 
-    // Hard flow B4: review dialog + completeRequest
+    // Hard flow B4: completeRequest in Firestore Transaction
     private void showReviewDialog() {
+        if (currentRequest == null || currentRequest.getChosenSitterId() == null) return;
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
+
         LinearLayout layout = new LinearLayout(this);
         layout.setOrientation(LinearLayout.VERTICAL);
         layout.setPadding(48, 24, 48, 12);
@@ -182,10 +225,56 @@ public class RequestDetailOwnerActivity extends AppCompatActivity {
                     int rating = (int) ratingBar.getRating();
                     if (rating < 1) rating = 1;
                     String comment = etComment.getText().toString().trim();
-                    // TODO Firebase: run Transaction to complete request, add review, update sitter stats
-                    FakeDataManager.completeRequest(requestId, FakeDataManager.currentOwnerId, rating, comment);
-                    Toast.makeText(getApplicationContext(), "Request completed & review saved!", Toast.LENGTH_LONG).show();
-                    loadDetails();
+                    String sitterId = currentRequest.getChosenSitterId();
+
+                    // Firestore Transaction
+                    DocumentReference reqRef = db.collection("careRequests").document(requestId);
+                    DocumentReference sitterRef = db.collection("users").document(sitterId);
+                    DocumentReference reviewRef = db.collection("reviews").document();
+
+                    Map<String, Object> reviewData = new HashMap<>();
+                    reviewData.put("requestId", requestId);
+                    reviewData.put("ownerId", currentUser.getUid());
+                    reviewData.put("sitterId", sitterId);
+                    reviewData.put("rating", rating);
+                    reviewData.put("comment", comment);
+                    reviewData.put("createdAt", System.currentTimeMillis());
+
+                    db.runTransaction(transaction -> {
+                        DocumentSnapshot sitterSnap = transaction.get(sitterRef);
+                        Long completedCountObj = sitterSnap.getLong("completedCount");
+                        Double avgRatingObj = sitterSnap.getDouble("averageRating");
+
+                        int oldCount = completedCountObj != null ? completedCountObj.intValue() : 0;
+                        double oldAvg = avgRatingObj != null ? avgRatingObj : 0.0;
+
+                        int newCount = oldCount + 1;
+                        double newAvg = (oldAvg * oldCount + rating) / newCount;
+                        newAvg = Math.round(newAvg * 10.0) / 10.0;
+
+                        String badge = Constants.BADGE_NEW;
+                        if (newCount >= 8 && newAvg >= 4.5) {
+                            badge = Constants.BADGE_TRUSTED;
+                        } else if (newCount >= 3) {
+                            badge = Constants.BADGE_CONFIRMED;
+                        }
+
+                        // 1. Mark request completed
+                        transaction.update(reqRef, "status", Constants.STATUS_COMPLETED);
+                        // 2. Add review
+                        transaction.set(reviewRef, reviewData);
+                        // 3. Update sitter stats & badge
+                        transaction.update(sitterRef,
+                                "completedCount", newCount,
+                                "averageRating", newAvg,
+                                "badge", badge);
+                        return null;
+                    }).addOnSuccessListener(result -> {
+                        Toast.makeText(getApplicationContext(), "Request completed & review saved!", Toast.LENGTH_LONG).show();
+                        loadDetails();
+                    }).addOnFailureListener(e -> {
+                        Toast.makeText(getApplicationContext(), "Transaction failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    });
                 })
                 .setNegativeButton("Cancel", null)
                 .show();

@@ -13,7 +13,7 @@ import com.example.petcareproject.R;
 import com.example.petcareproject.models.Application;
 import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.utils.Constants;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.List;
 
@@ -25,6 +25,7 @@ public class ApplicationAdapter extends RecyclerView.Adapter<ApplicationAdapter.
 
     private List<Application> applicationList;
     private OnApplicationClickListener listener;
+    private FirebaseFirestore db = FirebaseFirestore.getInstance();
 
     public ApplicationAdapter(List<Application> applicationList, OnApplicationClickListener listener) {
         this.applicationList = applicationList;
@@ -42,16 +43,23 @@ public class ApplicationAdapter extends RecyclerView.Adapter<ApplicationAdapter.
     @Override
     public void onBindViewHolder(@NonNull ApplicationViewHolder holder, int position) {
         Application app = applicationList.get(position);
-        CareRequest req = FakeDataManager.getRequestById(app.getRequestId());
 
-        if (req != null) {
-            holder.tvPetInfo.setText(req.getPetName() + " • " + req.getPetSpecies());
-            holder.tvCityDates.setText(req.getCity() + " • " + req.getStartDate() + " → " + req.getEndDate());
-            holder.tvPrice.setText((int) req.getPricePerDay() + " TND/day");
-        } else {
-            holder.tvPetInfo.setText("Care Request");
-            holder.tvCityDates.setText("");
-            holder.tvPrice.setText("");
+        holder.tvPetInfo.setText("Loading request...");
+        holder.tvCityDates.setText("");
+        holder.tvPrice.setText("");
+
+        if (app.getRequestId() != null) {
+            db.collection("careRequests").document(app.getRequestId()).get()
+                    .addOnSuccessListener(doc -> {
+                        if (doc.exists()) {
+                            CareRequest req = doc.toObject(CareRequest.class);
+                            if (req != null) {
+                                holder.tvPetInfo.setText(req.getPetName() + " • " + req.getPetSpecies());
+                                holder.tvCityDates.setText(req.getCity() + " • " + req.getStartDate() + " → " + req.getEndDate());
+                                holder.tvPrice.setText((int) req.getPricePerDay() + " TND/day");
+                            }
+                        }
+                    });
         }
 
         holder.tvAppStatus.setText(app.getStatus());

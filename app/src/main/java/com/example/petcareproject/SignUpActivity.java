@@ -7,11 +7,20 @@ import android.widget.EditText;
 import android.widget.RadioButton;
 import android.widget.TextView;
 
+import android.widget.Toast;
+
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
+
+import com.example.petcareproject.models.User;
+import com.example.petcareproject.utils.Constants;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.firestore.FirebaseFirestore;
+
+import java.util.Arrays;
 
 public class SignUpActivity extends AppCompatActivity {
 
@@ -19,12 +28,17 @@ public class SignUpActivity extends AppCompatActivity {
     private RadioButton rbOwner;
     private Button btnSignUp;
     private TextView tvLogin;
+    private FirebaseAuth mAuth;
+    private FirebaseFirestore db;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_sign_up);
+
+        mAuth = FirebaseAuth.getInstance();
+        db = FirebaseFirestore.getInstance();
 
         int pad = (int) (24 * getResources().getDisplayMetrics().density);
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
@@ -79,13 +93,37 @@ public class SignUpActivity extends AppCompatActivity {
                 return;
             }
 
-            // TODO Firebase: createUserWithEmailAndPassword and save user in Firestore
-            if (rbOwner.isChecked()) {
-                startActivity(new Intent(SignUpActivity.this, MyRequestsActivity.class));
-            } else {
-                startActivity(new Intent(SignUpActivity.this, OpenRequestsActivity.class));
-            }
-            finish();
+            btnSignUp.setEnabled(false);
+            mAuth.createUserWithEmailAndPassword(emailText, pass)
+                    .addOnSuccessListener(authResult -> {
+                        String uid = authResult.getUser().getUid();
+                        User newUser;
+                        if ("sitter".equals(role)) {
+                            newUser = new User(uid, name, emailText, phoneText, cityText, role, userBio,
+                                    Arrays.asList("Cat", "Dog"), 0, 0.0, Constants.BADGE_NEW);
+                        } else {
+                            newUser = new User(uid, name, emailText, phoneText, cityText, role, userBio);
+                        }
+
+                        db.collection("users").document(uid).set(newUser)
+                                .addOnSuccessListener(aVoid -> {
+                                    Toast.makeText(getApplicationContext(), "Account created!", Toast.LENGTH_LONG).show();
+                                    if (Constants.ROLE_OWNER.equals(role)) {
+                                        startActivity(new Intent(SignUpActivity.this, MyRequestsActivity.class));
+                                    } else {
+                                        startActivity(new Intent(SignUpActivity.this, OpenRequestsActivity.class));
+                                    }
+                                    finish();
+                                })
+                                .addOnFailureListener(e -> {
+                                    btnSignUp.setEnabled(true);
+                                    Toast.makeText(getApplicationContext(), "Failed to save profile: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                });
+                    })
+                    .addOnFailureListener(e -> {
+                        btnSignUp.setEnabled(true);
+                        Toast.makeText(getApplicationContext(), "Sign up failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    });
         });
 
         tvLogin.setOnClickListener(v ->

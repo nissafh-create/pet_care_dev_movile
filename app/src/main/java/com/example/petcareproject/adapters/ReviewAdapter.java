@@ -11,7 +11,7 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.petcareproject.R;
 import com.example.petcareproject.models.Review;
 import com.example.petcareproject.models.User;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.List;
 
@@ -34,8 +34,16 @@ public class ReviewAdapter extends RecyclerView.Adapter<ReviewAdapter.ReviewView
     @Override
     public void onBindViewHolder(@NonNull ReviewViewHolder holder, int position) {
         Review review = reviewList.get(position);
-        User owner = FakeDataManager.getUserById(review.getOwnerId());
-        holder.tvReviewerName.setText(owner != null ? owner.getFullName() : "Owner");
+        holder.tvReviewerName.setText("Owner");
+
+        if (review.getOwnerId() != null) {
+            FirebaseFirestore.getInstance().collection("users").document(review.getOwnerId()).get()
+                    .addOnSuccessListener(doc -> {
+                        if (doc.exists() && doc.getString("fullName") != null) {
+                            holder.tvReviewerName.setText(doc.getString("fullName"));
+                        }
+                    });
+        }
 
         StringBuilder stars = new StringBuilder();
         for (int i = 0; i < review.getRating(); i++) {

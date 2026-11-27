@@ -18,8 +18,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.petcareproject.adapters.ReviewAdapter;
 import com.example.petcareproject.models.Review;
 import com.example.petcareproject.models.User;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class SitterProfileActivity extends AppCompatActivity {
@@ -30,11 +34,19 @@ public class SitterProfileActivity extends AppCompatActivity {
     private Button btnLogout;
     private TextView navOpenRequests, navMyApplications, navProfile;
 
+    private ReviewAdapter reviewAdapter;
+    private List<Review> reviewList = new ArrayList<>();
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_sitter_profile);
+
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -56,18 +68,20 @@ public class SitterProfileActivity extends AppCompatActivity {
         navMyApplications = findViewById(R.id.navMyApplications);
         navProfile = findViewById(R.id.navProfile);
 
-        loadSitterProfile();
-
         rvReviews.setLayoutManager(new LinearLayoutManager(this));
-        List<Review> reviews = FakeDataManager.getReviewsForSitter(FakeDataManager.currentSitterId);
-        rvReviews.setAdapter(new ReviewAdapter(reviews));
+        reviewAdapter = new ReviewAdapter(reviewList);
+        rvReviews.setAdapter(reviewAdapter);
+
+        loadSitterProfile();
+        loadReviews();
 
         btnLogout.setOnClickListener(v -> {
-            // TODO Firebase: FirebaseAuth.getInstance().signOut();
+            mAuth.signOut();
             Toast.makeText(getApplicationContext(), "Logged out", Toast.LENGTH_LONG).show();
             Intent intent = new Intent(this, LoginActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(intent);
+            finish();
         });
 
         navOpenRequests.setOnClickListener(v -> {
@@ -82,30 +96,62 @@ public class SitterProfileActivity extends AppCompatActivity {
     }
 
     private void loadSitterProfile() {
-        User sitter = FakeDataManager.getUserById(FakeDataManager.currentSitterId);
-        if (sitter == null) return;
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
 
-        tvFullName.setText(sitter.getFullName());
-        tvCityRole.setText(sitter.getCity() + " • Sitter");
-        tvBadge.setText(sitter.getBadge() + " Sitter");
-        tvAvgRating.setText("★ " + sitter.getAverageRating());
-        tvCompletedCount.setText(String.valueOf(sitter.getCompletedCount()));
-        tvBio.setText(sitter.getBio());
+        db.collection("users").document(currentUser.getUid()).get()
+                .addOnSuccessListener(doc -> {
+                    if (doc.exists()) {
+                        User sitter = doc.toObject(User.class);
+                        if (sitter != null) {
+                            tvFullName.setText(sitter.getFullName());
+                            tvCityRole.setText(sitter.getCity() + " • Sitter");
+                            tvBadge.setText(sitter.getBadge() + " Sitter");
+                            tvAvgRating.setText("★ " + sitter.getAverageRating());
+                            tvCompletedCount.setText(String.valueOf(sitter.getCompletedCount()));
+                            tvBio.setText(sitter.getBio());
 
-        if (sitter.getAcceptedAnimals() != null && !sitter.getAcceptedAnimals().isEmpty()) {
-            tvAcceptedAnimals.setText(TextUtils.join(" • ", sitter.getAcceptedAnimals()));
-        } else {
-            tvAcceptedAnimals.setText("");
-        }
+                            if (sitter.getAcceptedAnimals() != null && !sitter.getAcceptedAnimals().isEmpty()) {
+                                tvAcceptedAnimals.setText(TextUtils.join(" • ", sitter.getAcceptedAnimals()));
+                            } else {
+                                tvAcceptedAnimals.setText("");
+                            }
 
-        String[] parts = sitter.getFullName().split(" ");
-        String initials = "";
-        if (parts.length > 0 && !parts[0].isEmpty()) {
-            initials += parts[0].charAt(0);
-        }
-        if (parts.length > 1 && !parts[1].isEmpty()) {
-            initials += parts[1].charAt(0);
-        }
-        tvInitials.setText(initials.toUpperCase());
+                            if (sitter.getFullName() != null) {
+                                String[] parts = sitter.getFullName().split(" ");
+                                String initials = "";
+                                if (parts.length > 0 && !parts[0].isEmpty()) {
+                                    initials += parts[0].charAt(0);
+                                }
+                                if (parts.length > 1 && !parts[1].isEmpty()) {
+                                    initials += parts[1].charAt(0);
+                                }
+                                tvInitials.setText(initials.toUpperCase());
+                            }
+                        }
+                    }
+                });
+    }
+
+    private void loadReviews() {
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
+
+        db.collection("reviews")
+                .whereEqualTo("sitterId", currentUser.getUid())
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    reviewList.clear();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            Review r = doc.toObject(Review.class);
+                            if (r != null) {
+                                r.setReviewId(doc.getId());
+                                reviewList.add(r);
+                            }
+                        }
+                    }
+                    reviewAdapter.notifyDataSetChanged();
+                });
     }
 }

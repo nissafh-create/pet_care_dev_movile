@@ -17,8 +17,12 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.petcareproject.adapters.PetAdapter;
 import com.example.petcareproject.models.Pet;
 import com.example.petcareproject.models.User;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class OwnerProfileActivity extends AppCompatActivity {
@@ -29,12 +33,18 @@ public class OwnerProfileActivity extends AppCompatActivity {
     private TextView navMyRequests, navPublish, navSitters, navProfile;
 
     private PetAdapter petAdapter;
+    private List<Pet> petsList = new ArrayList<>();
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_owner_profile);
+
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -56,25 +66,26 @@ public class OwnerProfileActivity extends AppCompatActivity {
         navSitters = findViewById(R.id.navSitters);
         navProfile = findViewById(R.id.navProfile);
 
-        loadOwnerProfile();
-
         rvPets.setLayoutManager(new LinearLayoutManager(this));
-        List<Pet> pets = FakeDataManager.getPetsByOwner(FakeDataManager.currentOwnerId);
-        petAdapter = new PetAdapter(pets, pet -> {
+        petAdapter = new PetAdapter(petsList, pet -> {
             Intent intent = new Intent(this, AddEditPetActivity.class);
             intent.putExtra("petId", pet.getPetId());
             startActivity(intent);
         });
         rvPets.setAdapter(petAdapter);
 
+        loadOwnerProfile();
+        loadPets();
+
         btnAddPet.setOnClickListener(v -> startActivity(new Intent(this, AddEditPetActivity.class)));
 
         btnLogout.setOnClickListener(v -> {
-            // TODO Firebase: FirebaseAuth.getInstance().signOut();
+            mAuth.signOut();
             Toast.makeText(getApplicationContext(), "Logged out", Toast.LENGTH_LONG).show();
             Intent intent = new Intent(this, LoginActivity.class);
             intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
             startActivity(intent);
+            finish();
         });
 
         navMyRequests.setOnClickListener(v -> {
@@ -96,29 +107,59 @@ public class OwnerProfileActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
-        if (petAdapter != null) {
-            petAdapter.updateList(FakeDataManager.getPetsByOwner(FakeDataManager.currentOwnerId));
-        }
+        loadPets();
     }
 
     private void loadOwnerProfile() {
-        User owner = FakeDataManager.getUserById(FakeDataManager.currentOwnerId);
-        if (owner == null) return;
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
 
-        tvFullName.setText(owner.getFullName());
-        tvCityRole.setText(owner.getCity() + " • Owner");
-        tvEmail.setText(owner.getEmail());
-        tvPhone.setText(owner.getPhone());
-        tvBio.setText(owner.getBio());
+        db.collection("users").document(currentUser.getUid()).get()
+                .addOnSuccessListener(doc -> {
+                    if (doc.exists()) {
+                        User owner = doc.toObject(User.class);
+                        if (owner != null) {
+                            tvFullName.setText(owner.getFullName());
+                            tvCityRole.setText(owner.getCity() + " • Owner");
+                            tvEmail.setText(owner.getEmail());
+                            tvPhone.setText(owner.getPhone());
+                            tvBio.setText(owner.getBio());
 
-        String[] parts = owner.getFullName().split(" ");
-        String initials = "";
-        if (parts.length > 0 && !parts[0].isEmpty()) {
-            initials += parts[0].charAt(0);
-        }
-        if (parts.length > 1 && !parts[1].isEmpty()) {
-            initials += parts[1].charAt(0);
-        }
-        tvInitials.setText(initials.toUpperCase());
+                            if (owner.getFullName() != null) {
+                                String[] parts = owner.getFullName().split(" ");
+                                String initials = "";
+                                if (parts.length > 0 && !parts[0].isEmpty()) {
+                                    initials += parts[0].charAt(0);
+                                }
+                                if (parts.length > 1 && !parts[1].isEmpty()) {
+                                    initials += parts[1].charAt(0);
+                                }
+                                tvInitials.setText(initials.toUpperCase());
+                            }
+                        }
+                    }
+                });
+    }
+
+    private void loadPets() {
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
+
+        db.collection("pets")
+                .whereEqualTo("ownerId", currentUser.getUid())
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    petsList.clear();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            Pet p = doc.toObject(Pet.class);
+                            if (p != null) {
+                                p.setPetId(doc.getId());
+                                petsList.add(p);
+                            }
+                        }
+                    }
+                    petAdapter.notifyDataSetChanged();
+                });
     }
 }

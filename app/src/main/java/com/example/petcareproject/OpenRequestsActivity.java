@@ -22,7 +22,9 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.example.petcareproject.adapters.CareRequestAdapter;
 import com.example.petcareproject.models.CareRequest;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.example.petcareproject.utils.Constants;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,13 +37,16 @@ public class OpenRequestsActivity extends AppCompatActivity {
     private TextView navOpenRequests, navMyApplications, navProfile;
 
     private CareRequestAdapter adapter;
-    private List<CareRequest> allOpenRequests;
+    private List<CareRequest> allOpenRequests = new ArrayList<>();
+    private FirebaseFirestore db;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_open_requests);
+
+        db = FirebaseFirestore.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -69,14 +74,15 @@ public class OpenRequestsActivity extends AppCompatActivity {
         spAnimal.setAdapter(animalAdapter);
 
         // Setup RecyclerView
-        allOpenRequests = FakeDataManager.getOpenRequests();
         rvOpenRequests.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new CareRequestAdapter(allOpenRequests, request -> {
+        adapter = new CareRequestAdapter(new ArrayList<>(), request -> {
             Intent intent = new Intent(OpenRequestsActivity.this, RequestDetailSitterActivity.class);
             intent.putExtra("requestId", request.getRequestId());
             startActivity(intent);
         });
         rvOpenRequests.setAdapter(adapter);
+
+        loadOpenRequests();
 
         // Filter listeners
         AdapterView.OnItemSelectedListener filterListener = new AdapterView.OnItemSelectedListener() {
@@ -117,6 +123,28 @@ public class OpenRequestsActivity extends AppCompatActivity {
             startActivity(new Intent(this, SitterProfileActivity.class));
             finish();
         });
+    }
+
+    private void loadOpenRequests() {
+        db.collection("careRequests")
+                .whereEqualTo("status", Constants.STATUS_OPEN)
+                .addSnapshotListener((queryDocumentSnapshots, error) -> {
+                    if (error != null) {
+                        Toast.makeText(getApplicationContext(), "Error loading requests: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    allOpenRequests.clear();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            CareRequest req = doc.toObject(CareRequest.class);
+                            if (req != null) {
+                                req.setRequestId(doc.getId());
+                                allOpenRequests.add(req);
+                            }
+                        }
+                    }
+                    applyFilters();
+                });
     }
 
     private void applyFilters() {

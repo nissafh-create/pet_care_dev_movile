@@ -22,6 +22,10 @@ import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.models.Pet;
 import com.example.petcareproject.utils.Constants;
 import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -36,13 +40,18 @@ public class PublishRequestActivity extends AppCompatActivity {
     private Button btnPublish;
     private TextView navMyRequests, navPublish, navSitters, navProfile;
 
-    private List<Pet> ownerPets;
+    private List<Pet> ownerPets = new ArrayList<>();
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_publish_request);
+
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -112,17 +121,32 @@ public class PublishRequestActivity extends AppCompatActivity {
     }
 
     private void loadPetsSpinner() {
-        ownerPets = FakeDataManager.getPetsByOwner(FakeDataManager.currentOwnerId);
-        List<String> petLabels = new ArrayList<>();
-        for (Pet p : ownerPets) {
-            petLabels.add(p.getName() + ", " + p.getSpecies());
-        }
-        if (petLabels.isEmpty()) {
-            petLabels.add("No pets found");
-        }
-        ArrayAdapter<String> adapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, petLabels);
-        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spPet.setAdapter(adapter);
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
+
+        db.collection("pets")
+                .whereEqualTo("ownerId", currentUser.getUid())
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    ownerPets.clear();
+                    List<String> petLabels = new ArrayList<>();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            Pet p = doc.toObject(Pet.class);
+                            if (p != null) {
+                                p.setPetId(doc.getId());
+                                ownerPets.add(p);
+                                petLabels.add(p.getName() + ", " + p.getSpecies());
+                            }
+                        }
+                    }
+                    if (petLabels.isEmpty()) {
+                        petLabels.add("No pets found");
+                    }
+                    ArrayAdapter<String> adapter = new ArrayAdapter<>(PublishRequestActivity.this, android.R.layout.simple_spinner_item, petLabels);
+                    adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                    spPet.setAdapter(adapter);
+                });
     }
 
     private void showDatePicker(EditText target) {
@@ -155,6 +179,9 @@ public class PublishRequestActivity extends AppCompatActivity {
     }
 
     private void publishRequest() {
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
+
         if (ownerPets.isEmpty()) {
             Toast.makeText(getApplicationContext(), "Please add a pet first", Toast.LENGTH_LONG).show();
             return;
@@ -186,9 +213,10 @@ public class PublishRequestActivity extends AppCompatActivity {
         Pet selectedPet = ownerPets.get(spPet.getSelectedItemPosition());
         double price = Double.parseDouble(priceStr);
 
+        btnPublish.setEnabled(false);
         CareRequest request = new CareRequest(
                 null,
-                FakeDataManager.currentOwnerId,
+                currentUser.getUid(),
                 selectedPet.getPetId(),
                 selectedPet.getName(),
                 selectedPet.getSpecies(),
@@ -201,10 +229,16 @@ public class PublishRequestActivity extends AppCompatActivity {
                 null
         );
 
-        // TODO Firebase: add document in careRequests collection
-        FakeDataManager.addCareRequest(request);
-        Toast.makeText(getApplicationContext(), "Request published!", Toast.LENGTH_LONG).show();
-        startActivity(new Intent(this, MyRequestsActivity.class));
-        finish();
+        db.collection("careRequests").add(request)
+                .addOnSuccessListener(docRef -> {
+                    docRef.update("requestId", docRef.getId());
+                    Toast.makeText(getApplicationContext(), "Request published!", Toast.LENGTH_LONG).show();
+                    startActivity(new Intent(PublishRequestActivity.this, MyRequestsActivity.class));
+                    finish();
+                })
+                .addOnFailureListener(e -> {
+                    btnPublish.setEnabled(true);
+                    Toast.makeText(getApplicationContext(), "Failed to publish: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
     }
 }

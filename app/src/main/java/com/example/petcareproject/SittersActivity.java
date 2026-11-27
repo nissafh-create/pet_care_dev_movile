@@ -26,7 +26,12 @@ import com.example.petcareproject.adapters.TopSitterAdapter;
 import com.example.petcareproject.models.Application;
 import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.models.User;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.example.petcareproject.utils.Constants;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.WriteBatch;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -39,15 +44,21 @@ public class SittersActivity extends AppCompatActivity {
     private RecyclerView rvSitters;
     private TextView navMyRequests, navPublish, navSitters, navProfile;
 
-    private List<CareRequest> ownerOpenRequests;
+    private List<CareRequest> ownerOpenRequests = new ArrayList<>();
     private ApplicantAdapter applicantAdapter;
     private TopSitterAdapter topSitterAdapter;
+    private List<User> topSittersList = new ArrayList<>();
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_sitters);
+
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -66,6 +77,14 @@ public class SittersActivity extends AppCompatActivity {
         navProfile = findViewById(R.id.navProfile);
 
         rvSitters.setLayoutManager(new LinearLayoutManager(this));
+
+        topSitterAdapter = new TopSitterAdapter(topSittersList);
+        applicantAdapter = new ApplicantAdapter(new ArrayList<>(), application -> {
+            if (ownerOpenRequests.isEmpty()) return;
+            int pos = spRequest.getSelectedItemPosition();
+            String requestId = ownerOpenRequests.get(pos).getRequestId();
+            chooseSitter(requestId, application.getApplicationId(), application.getSitterId());
+        });
 
         setupTopSittersTab();
         setupApplicantsTab();
@@ -97,41 +116,64 @@ public class SittersActivity extends AppCompatActivity {
     }
 
     private void setupTopSittersTab() {
-        List<User> topSitters = FakeDataManager.getTopSitters();
-        topSitterAdapter = new TopSitterAdapter(topSitters);
+        db.collection("users")
+                .whereEqualTo("role", Constants.ROLE_SITTER)
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    topSittersList.clear();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            User u = doc.toObject(User.class);
+                            if (u != null) {
+                                u.setUserId(doc.getId());
+                                topSittersList.add(u);
+                            }
+                        }
+                    }
+                    topSittersList.sort((a, b) -> Double.compare(b.getAverageRating(), a.getAverageRating()));
+                    topSitterAdapter.notifyDataSetChanged();
+                });
     }
 
     private void setupApplicantsTab() {
-        ownerOpenRequests = FakeDataManager.getOwnerOpenRequests(FakeDataManager.currentOwnerId);
-        List<String> labels = new ArrayList<>();
-        for (CareRequest r : ownerOpenRequests) {
-            labels.add(r.getPetName() + ", " + r.getPetSpecies() + " (" + r.getStartDate() + " → " + r.getEndDate() + ")");
-        }
-        if (labels.isEmpty()) {
-            labels.add("No open requests");
-        }
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
 
-        ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(this, android.R.layout.simple_spinner_item, labels);
-        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-        spRequest.setAdapter(spinnerAdapter);
+        db.collection("careRequests")
+                .whereEqualTo("ownerId", currentUser.getUid())
+                .whereEqualTo("status", Constants.STATUS_OPEN)
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    ownerOpenRequests.clear();
+                    List<String> labels = new ArrayList<>();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            CareRequest r = doc.toObject(CareRequest.class);
+                            if (r != null) {
+                                r.setRequestId(doc.getId());
+                                ownerOpenRequests.add(r);
+                                labels.add(r.getPetName() + ", " + r.getPetSpecies() + " (" + r.getStartDate() + " → " + r.getEndDate() + ")");
+                            }
+                        }
+                    }
+                    if (labels.isEmpty()) {
+                        labels.add("No open requests");
+                    }
+                    ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(SittersActivity.this, android.R.layout.simple_spinner_item, labels);
+                    spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                    spRequest.setAdapter(spinnerAdapter);
 
-        applicantAdapter = new ApplicantAdapter(new ArrayList<>(), application -> {
-            if (ownerOpenRequests.isEmpty()) return;
-            int pos = spRequest.getSelectedItemPosition();
-            String requestId = ownerOpenRequests.get(pos).getRequestId();
-            chooseSitter(requestId, application.getApplicationId());
-        });
+                    spRequest.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                        @Override
+                        public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                            loadApplicantsForSelectedRequest();
+                        }
 
-        spRequest.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-            @Override
-            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                loadApplicantsForSelectedRequest();
-            }
-
-            @Override
-            public void onNothingSelected(AdapterView<?> parent) {
-            }
-        });
+                        @Override
+                        public void onNothingSelected(AdapterView<?> parent) {
+                        }
+                    });
+                });
     }
 
     private void loadApplicantsForSelectedRequest() {
@@ -140,9 +182,25 @@ public class SittersActivity extends AppCompatActivity {
             return;
         }
         int pos = spRequest.getSelectedItemPosition();
-        String requestId = ownerOpenRequests.get(pos).getRequestId();
-        List<Application> list = FakeDataManager.getApplicationsForRequest(requestId);
-        applicantAdapter.updateList(list);
+        if (pos < 0 || pos >= ownerOpenRequests.size()) return;
+        String reqId = ownerOpenRequests.get(pos).getRequestId();
+
+        db.collection("applications")
+                .whereEqualTo("requestId", reqId)
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    List<Application> list = new ArrayList<>();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            Application app = doc.toObject(Application.class);
+                            if (app != null) {
+                                app.setApplicationId(doc.getId());
+                                list.add(app);
+                            }
+                        }
+                    }
+                    applicantAdapter.updateList(list);
+                });
     }
 
     private void showTopSittersTab() {
@@ -166,27 +224,64 @@ public class SittersActivity extends AppCompatActivity {
         tabTopSitters.setTypeface(null, Typeface.NORMAL);
     }
 
-    // Hard flow A6: accept chosen application, reject others, confirm request
-    private void chooseSitter(String requestId, String applicationId) {
-        // TODO Firebase: run WriteBatch to update application, other applications, and careRequest
-        FakeDataManager.chooseSitter(requestId, applicationId);
-        Toast.makeText(getApplicationContext(), "Sitter chosen! Request confirmed.", Toast.LENGTH_LONG).show();
-        setupApplicantsTab();
-        loadApplicantsForSelectedRequest();
+    // Hard flow A6: WriteBatch -> chosen application accepted, other applications rejected, request confirmed
+    private void chooseSitter(String requestId, String chosenApplicationId, String chosenSitterId) {
+        db.collection("applications")
+                .whereEqualTo("requestId", requestId)
+                .get()
+                .addOnSuccessListener(queryDocumentSnapshots -> {
+                    WriteBatch batch = db.batch();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            if (doc.getId().equals(chosenApplicationId)) {
+                                batch.update(doc.getReference(), "status", Constants.APP_ACCEPTED);
+                            } else {
+                                batch.update(doc.getReference(), "status", Constants.APP_REJECTED);
+                            }
+                        }
+                    }
+                    batch.update(db.collection("careRequests").document(requestId),
+                            "status", Constants.STATUS_CONFIRMED,
+                            "chosenSitterId", chosenSitterId);
+
+                    batch.commit()
+                            .addOnSuccessListener(aVoid -> {
+                                Toast.makeText(getApplicationContext(), "Sitter chosen! Request confirmed.", Toast.LENGTH_LONG).show();
+                                setupApplicantsTab();
+                            })
+                            .addOnFailureListener(e -> Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                });
     }
 
-    // Screen 5 (A7): confirmation dialog before cancelling a request
+    // Screen 5 (A7): WriteBatch -> cancel request and reject pending applications
     public static void cancelRequest(AppCompatActivity activity, String requestId, Runnable onCancelled) {
         new AlertDialog.Builder(activity)
                 .setTitle("Cancel Request")
                 .setMessage("Are you sure you want to cancel this request?")
                 .setPositiveButton("Yes", (dialog, which) -> {
-                    // TODO Firebase: WriteBatch to set status = cancelled and reject pending applications
-                    FakeDataManager.cancelRequest(requestId);
-                    Toast.makeText(activity.getApplicationContext(), "Request cancelled", Toast.LENGTH_LONG).show();
-                    if (onCancelled != null) {
-                        onCancelled.run();
-                    }
+                    FirebaseFirestore db = FirebaseFirestore.getInstance();
+                    db.collection("applications")
+                            .whereEqualTo("requestId", requestId)
+                            .get()
+                            .addOnSuccessListener(queryDocumentSnapshots -> {
+                                WriteBatch batch = db.batch();
+                                batch.update(db.collection("careRequests").document(requestId), "status", Constants.STATUS_CANCELLED);
+                                if (queryDocumentSnapshots != null) {
+                                    for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                                        if (Constants.APP_PENDING.equals(doc.getString("status"))) {
+                                            batch.update(doc.getReference(), "status", Constants.APP_REJECTED);
+                                        }
+                                    }
+                                }
+                                batch.commit()
+                                        .addOnSuccessListener(aVoid -> {
+                                            Toast.makeText(activity.getApplicationContext(), "Request cancelled", Toast.LENGTH_LONG).show();
+                                            if (onCancelled != null) {
+                                                onCancelled.run();
+                                            }
+                                        })
+                                        .addOnFailureListener(e -> Toast.makeText(activity.getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                            });
                 })
                 .setNegativeButton("No", null)
                 .show();

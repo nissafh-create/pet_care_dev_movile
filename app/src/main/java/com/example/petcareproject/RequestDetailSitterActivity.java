@@ -18,6 +18,13 @@ import com.example.petcareproject.models.Pet;
 import com.example.petcareproject.models.User;
 import com.example.petcareproject.utils.Constants;
 import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
+
+import java.util.HashMap;
+import java.util.Map;
 
 public class RequestDetailSitterActivity extends AppCompatActivity {
 
@@ -28,12 +35,18 @@ public class RequestDetailSitterActivity extends AppCompatActivity {
     private Button btnVolunteer;
 
     private String requestId;
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
+    private CareRequest currentRequest;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_request_detail_sitter);
+
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -64,20 +77,42 @@ public class RequestDetailSitterActivity extends AppCompatActivity {
         tvBack.setOnClickListener(v -> finish());
 
         btnVolunteer.setOnClickListener(v -> {
-            if (requestId == null) return;
+            if (requestId == null || currentRequest == null) return;
+            FirebaseUser currentUser = mAuth.getCurrentUser();
+            if (currentUser == null) return;
 
-            // Prevent duplicate application
-            if (FakeDataManager.hasSitterApplied(requestId, FakeDataManager.currentSitterId)) {
-                Toast.makeText(getApplicationContext(), "You already applied to this request", Toast.LENGTH_LONG).show();
-                return;
-            }
-
-            String message = etMessage.getText().toString().trim();
-            // TODO Firebase: add document in applications collection
-            FakeDataManager.addApplication(requestId, FakeDataManager.currentSitterId, message);
-            Toast.makeText(getApplicationContext(), "Application sent!", Toast.LENGTH_LONG).show();
             btnVolunteer.setEnabled(false);
-            btnVolunteer.setText("Applied");
+            String message = etMessage.getText().toString().trim();
+
+            // Fetch current sitter's name from user profile
+            db.collection("users").document(currentUser.getUid()).get()
+                    .addOnSuccessListener(userDoc -> {
+                        String sitterName = userDoc.exists() && userDoc.getString("fullName") != null
+                                ? userDoc.getString("fullName")
+                                : "Sitter";
+
+                        Map<String, Object> application = new HashMap<>();
+                        application.put("requestId", requestId);
+                        application.put("sitterId", currentUser.getUid());
+                        application.put("sitterName", sitterName);
+                        application.put("message", message);
+                        application.put("status", Constants.APP_PENDING);
+                        application.put("createdAt", System.currentTimeMillis());
+
+                        db.collection("applications").add(application)
+                                .addOnSuccessListener(docRef -> {
+                                    Toast.makeText(getApplicationContext(), "Application sent!", Toast.LENGTH_LONG).show();
+                                    btnVolunteer.setText("Applied");
+                                })
+                                .addOnFailureListener(e -> {
+                                    btnVolunteer.setEnabled(true);
+                                    Toast.makeText(getApplicationContext(), "Failed to send: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                });
+                    })
+                    .addOnFailureListener(e -> {
+                        btnVolunteer.setEnabled(true);
+                        Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    });
         });
 
         navOpenRequests.setOnClickListener(v -> {
@@ -97,39 +132,78 @@ public class RequestDetailSitterActivity extends AppCompatActivity {
     }
 
     private void loadRequestDetails() {
-        CareRequest req = FakeDataManager.getRequestById(requestId);
-        if (req == null) return;
+        if (requestId == null) return;
 
-        tvPetTitle.setText(req.getPetName() + " • " + req.getPetSpecies());
-        tvStatus.setText(req.getStatus());
-        tvCityDates.setText(req.getCity() + " • " + req.getStartDate() + " → " + req.getEndDate());
+        db.collection("careRequests").document(requestId).get()
+                .addOnSuccessListener(doc -> {
+                    if (!doc.exists()) return;
+                    currentRequest = doc.toObject(CareRequest.class);
+                    if (currentRequest == null) return;
+                    currentRequest.setRequestId(doc.getId());
 
-        long days = FakeDataManager.calculateDays(req.getStartDate(), req.getEndDate());
-        int total = (int) (days * req.getPricePerDay());
-        tvPriceTotal.setText((int) req.getPricePerDay() + " TND/day • " + total + " TND total");
-        tvDescription.setText(req.getDescription());
+                    tvPetTitle.setText(currentRequest.getPetName() + " • " + currentRequest.getPetSpecies());
+                    tvStatus.setText(currentRequest.getStatus());
+                    tvCityDates.setText(currentRequest.getCity() + " • " + currentRequest.getStartDate() + " → " + currentRequest.getEndDate());
 
-        Pet pet = FakeDataManager.getPetById(req.getPetId());
-        if (pet != null) {
-            tvBreedAge.setText(pet.getBreed() + ", " + pet.getAge() + " years");
-            tvSpecialNeeds.setText("Special needs: " + pet.getSpecialNeeds());
-        }
+                    long days = FakeDataManager.calculateDays(currentRequest.getStartDate(), currentRequest.getEndDate());
+                    int total = (int) (days * currentRequest.getPricePerDay());
+                    tvPriceTotal.setText((int) currentRequest.getPricePerDay() + " TND/day • " + total + " TND total");
+                    tvDescription.setText(currentRequest.getDescription());
 
-        User owner = FakeDataManager.getUserById(req.getOwnerId());
-        if (owner != null) {
-            tvOwnerName.setText(owner.getFullName());
-            tvOwnerCity.setText(owner.getCity());
-            if (!owner.getFullName().isEmpty()) {
-                tvOwnerInitial.setText(String.valueOf(owner.getFullName().charAt(0)).toUpperCase());
-            }
-        }
+                    // Load pet details
+                    if (currentRequest.getPetId() != null) {
+                        db.collection("pets").document(currentRequest.getPetId()).get()
+                                .addOnSuccessListener(petDoc -> {
+                                    if (petDoc.exists()) {
+                                        Pet pet = petDoc.toObject(Pet.class);
+                                        if (pet != null) {
+                                            tvBreedAge.setText(pet.getBreed() + ", " + pet.getAge() + " years");
+                                            tvSpecialNeeds.setText("Special needs: " + pet.getSpecialNeeds());
+                                        }
+                                    }
+                                });
+                    }
 
-        if (!Constants.STATUS_OPEN.equals(req.getStatus())) {
-            btnVolunteer.setEnabled(false);
-            btnVolunteer.setText("Closed");
-        } else if (FakeDataManager.hasSitterApplied(requestId, FakeDataManager.currentSitterId)) {
-            btnVolunteer.setEnabled(false);
-            btnVolunteer.setText("Already applied");
-        }
+                    // Load owner details
+                    if (currentRequest.getOwnerId() != null) {
+                        db.collection("users").document(currentRequest.getOwnerId()).get()
+                                .addOnSuccessListener(ownerDoc -> {
+                                    if (ownerDoc.exists()) {
+                                        User owner = ownerDoc.toObject(User.class);
+                                        if (owner != null) {
+                                            tvOwnerName.setText(owner.getFullName());
+                                            tvOwnerCity.setText(owner.getCity());
+                                            if (owner.getFullName() != null && !owner.getFullName().isEmpty()) {
+                                                tvOwnerInitial.setText(String.valueOf(owner.getFullName().charAt(0)).toUpperCase());
+                                            }
+                                        }
+                                    }
+                                });
+                    }
+
+                    // Check if request is closed
+                    if (!Constants.STATUS_OPEN.equals(currentRequest.getStatus())) {
+                        btnVolunteer.setEnabled(false);
+                        btnVolunteer.setText("Closed");
+                    } else {
+                        checkIfAlreadyApplied();
+                    }
+                });
+    }
+
+    private void checkIfAlreadyApplied() {
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
+
+        db.collection("applications")
+                .whereEqualTo("requestId", requestId)
+                .whereEqualTo("sitterId", currentUser.getUid())
+                .get()
+                .addOnSuccessListener(snaps -> {
+                    if (snaps != null && !snaps.isEmpty()) {
+                        btnVolunteer.setEnabled(false);
+                        btnVolunteer.setText("Already applied");
+                    }
+                });
     }
 }

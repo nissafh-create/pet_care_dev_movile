@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
@@ -17,7 +18,10 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.petcareproject.adapters.CareRequestAdapter;
 import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.utils.Constants;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.google.firebase.auth.FirebaseAuth;
+import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -30,12 +34,18 @@ public class MyRequestsActivity extends AppCompatActivity {
 
     private CareRequestAdapter adapter;
     private String currentFilter = "all";
+    private List<CareRequest> allMyRequests = new ArrayList<>();
+    private FirebaseFirestore db;
+    private FirebaseAuth mAuth;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         EdgeToEdge.enable(this);
         setContentView(R.layout.activity_my_requests);
+
+        db = FirebaseFirestore.getInstance();
+        mAuth = FirebaseAuth.getInstance();
 
         ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
             Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
@@ -99,14 +109,37 @@ public class MyRequestsActivity extends AppCompatActivity {
         }
         selectedTab.setTextColor(ContextCompat.getColor(this, R.color.green_dark));
         selectedTab.setTypeface(null, Typeface.BOLD);
-        loadRequests();
+        applyFilter();
     }
 
     private void loadRequests() {
-        // TODO Firebase: query careRequests where ownerId == currentUserId
-        List<CareRequest> all = FakeDataManager.getOwnerRequests(FakeDataManager.currentOwnerId);
+        FirebaseUser currentUser = mAuth.getCurrentUser();
+        if (currentUser == null) return;
+
+        db.collection("careRequests")
+                .whereEqualTo("ownerId", currentUser.getUid())
+                .addSnapshotListener((queryDocumentSnapshots, error) -> {
+                    if (error != null) {
+                        Toast.makeText(getApplicationContext(), "Error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    allMyRequests.clear();
+                    if (queryDocumentSnapshots != null) {
+                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                            CareRequest req = doc.toObject(CareRequest.class);
+                            if (req != null) {
+                                req.setRequestId(doc.getId());
+                                allMyRequests.add(req);
+                            }
+                        }
+                    }
+                    applyFilter();
+                });
+    }
+
+    private void applyFilter() {
         List<CareRequest> filtered = new ArrayList<>();
-        for (CareRequest r : all) {
+        for (CareRequest r : allMyRequests) {
             if ("all".equals(currentFilter) || currentFilter.equals(r.getStatus())) {
                 filtered.add(r);
             }
