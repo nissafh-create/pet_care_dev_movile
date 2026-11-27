@@ -8,7 +8,7 @@ public class Application {
     private String sitterName;
     private String message;
     private String status;
-    private long createdAt; // TODO Firebase: replace with Timestamp
+    private long createdAt;
 
     public Application() {
     }

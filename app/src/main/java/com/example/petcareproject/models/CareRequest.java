@@ -8,8 +8,8 @@ public class CareRequest {
     private String petName;
     private String petSpecies;
     private String city;
-    private String startDate; // TODO Firebase: replace with Timestamp
-    private String endDate;   // TODO Firebase: replace with Timestamp
+    private String startDate;
+    private String endDate;
     private double pricePerDay;
     private String description;
     private String status;

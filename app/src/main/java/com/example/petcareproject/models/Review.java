@@ -8,7 +8,7 @@ public class Review {
     private String sitterId;
     private int rating;
     private String comment;
-    private long createdAt; // TODO Firebase: replace with Timestamp
+    private long createdAt;
 
     public Review() {
     }

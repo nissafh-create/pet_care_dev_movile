@@ -14,7 +14,7 @@ public class User {
     private String city;
     private String role;
     private String bio;
-    private long createdAt; // TODO Firebase: replace with Timestamp
+    private long createdAt;
 
     // Sitter-only fields
     private List<String> acceptedAnimals;
