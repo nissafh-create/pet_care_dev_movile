@@ -3,13 +3,17 @@ package com.example.petcareproject;
 import android.content.Intent;
 import android.graphics.Typeface;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
+import androidx.core.view.OnApplyWindowInsetsListener;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -21,7 +25,10 @@ import com.example.petcareproject.utils.Constants;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,10 +54,14 @@ public class MyRequestsActivity extends AppCompatActivity {
         db = FirebaseFirestore.getInstance();
         mAuth = FirebaseAuth.getInstance();
 
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), new OnApplyWindowInsetsListener() {
+            @NonNull
+            @Override
+            public WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
+                Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+                v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+                return insets;
+            }
         });
 
         tabAll = findViewById(R.id.tabAll);
@@ -64,31 +75,66 @@ public class MyRequestsActivity extends AppCompatActivity {
         navProfile = findViewById(R.id.navProfile);
 
         rvMyRequests.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new CareRequestAdapter(new ArrayList<>(), request -> {
-            Intent intent = new Intent(MyRequestsActivity.this, RequestDetailOwnerActivity.class);
-            intent.putExtra("requestId", request.getRequestId());
-            startActivity(intent);
+        adapter = new CareRequestAdapter(new ArrayList<>(), new CareRequestAdapter.OnRequestClickListener() {
+            @Override
+            public void onRequestClick(CareRequest request) {
+                Intent intent = new Intent(MyRequestsActivity.this, RequestDetailOwnerActivity.class);
+                intent.putExtra("requestId", request.getRequestId());
+                startActivity(intent);
+            }
         });
         rvMyRequests.setAdapter(adapter);
 
-        tabAll.setOnClickListener(v -> selectTab("all", tabAll));
-        tabOpen.setOnClickListener(v -> selectTab(Constants.STATUS_OPEN, tabOpen));
-        tabConfirmed.setOnClickListener(v -> selectTab(Constants.STATUS_CONFIRMED, tabConfirmed));
-        tabCompleted.setOnClickListener(v -> selectTab(Constants.STATUS_COMPLETED, tabCompleted));
-
-        navPublish.setOnClickListener(v -> {
-            startActivity(new Intent(this, PublishRequestActivity.class));
-            finish();
+        tabAll.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                selectTab("all", tabAll);
+            }
         });
 
-        navSitters.setOnClickListener(v -> {
-            startActivity(new Intent(this, SittersActivity.class));
-            finish();
+        tabOpen.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                selectTab(Constants.STATUS_OPEN, tabOpen);
+            }
         });
 
-        navProfile.setOnClickListener(v -> {
-            startActivity(new Intent(this, OwnerProfileActivity.class));
-            finish();
+        tabConfirmed.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                selectTab(Constants.STATUS_CONFIRMED, tabConfirmed);
+            }
+        });
+
+        tabCompleted.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                selectTab(Constants.STATUS_COMPLETED, tabCompleted);
+            }
+        });
+
+        navPublish.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MyRequestsActivity.this, PublishRequestActivity.class));
+                finish();
+            }
+        });
+
+        navSitters.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MyRequestsActivity.this, SittersActivity.class));
+                finish();
+            }
+        });
+
+        navProfile.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MyRequestsActivity.this, OwnerProfileActivity.class));
+                finish();
+            }
         });
 
         loadRequests();
@@ -118,22 +164,25 @@ public class MyRequestsActivity extends AppCompatActivity {
 
         db.collection("careRequests")
                 .whereEqualTo("ownerId", currentUser.getUid())
-                .addSnapshotListener((queryDocumentSnapshots, error) -> {
-                    if (error != null) {
-                        Toast.makeText(getApplicationContext(), "Error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    allMyRequests.clear();
-                    if (queryDocumentSnapshots != null) {
-                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                            CareRequest req = doc.toObject(CareRequest.class);
-                            if (req != null) {
-                                req.setRequestId(doc.getId());
-                                allMyRequests.add(req);
+                .addSnapshotListener(new EventListener<QuerySnapshot>() {
+                    @Override
+                    public void onEvent(@Nullable QuerySnapshot queryDocumentSnapshots, @Nullable FirebaseFirestoreException error) {
+                        if (error != null) {
+                            Toast.makeText(getApplicationContext(), "Error: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        allMyRequests.clear();
+                        if (queryDocumentSnapshots != null) {
+                            for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                                CareRequest req = doc.toObject(CareRequest.class);
+                                if (req != null) {
+                                    req.setRequestId(doc.getId());
+                                    allMyRequests.add(req);
+                                }
                             }
                         }
+                        applyFilter();
                     }
-                    applyFilter();
                 });
     }
 

@@ -11,6 +11,7 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
 import java.util.Locale;
@@ -208,7 +209,12 @@ public class FakeDataManager {
                 sitters.add(u);
             }
         }
-        sitters.sort((a, b) -> Double.compare(b.getAverageRating(), a.getAverageRating()));
+        Collections.sort(sitters, new Comparator<User>() {
+            @Override
+            public int compare(User a, User b) {
+                return Double.compare(b.getAverageRating(), a.getAverageRating());
+            }
+        });
         return sitters;
     }
 

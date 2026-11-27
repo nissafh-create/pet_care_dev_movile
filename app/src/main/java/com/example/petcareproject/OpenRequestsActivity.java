@@ -13,8 +13,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
+import androidx.core.view.OnApplyWindowInsetsListener;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -24,7 +27,10 @@ import com.example.petcareproject.adapters.CareRequestAdapter;
 import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.utils.Constants;
 import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -48,10 +54,14 @@ public class OpenRequestsActivity extends AppCompatActivity {
 
         db = FirebaseFirestore.getInstance();
 
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), new OnApplyWindowInsetsListener() {
+            @NonNull
+            @Override
+            public WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
+                Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+                v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+                return insets;
+            }
         });
 
         spCity = findViewById(R.id.spCity);
@@ -75,10 +85,13 @@ public class OpenRequestsActivity extends AppCompatActivity {
 
         // Setup RecyclerView
         rvOpenRequests.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new CareRequestAdapter(new ArrayList<>(), request -> {
-            Intent intent = new Intent(OpenRequestsActivity.this, RequestDetailSitterActivity.class);
-            intent.putExtra("requestId", request.getRequestId());
-            startActivity(intent);
+        adapter = new CareRequestAdapter(new ArrayList<>(), new CareRequestAdapter.OnRequestClickListener() {
+            @Override
+            public void onRequestClick(CareRequest request) {
+                Intent intent = new Intent(OpenRequestsActivity.this, RequestDetailSitterActivity.class);
+                intent.putExtra("requestId", request.getRequestId());
+                startActivity(intent);
+            }
         });
         rvOpenRequests.setAdapter(adapter);
 
@@ -114,36 +127,45 @@ public class OpenRequestsActivity extends AppCompatActivity {
         });
 
         // Bottom navigation clicks
-        navMyApplications.setOnClickListener(v -> {
-            startActivity(new Intent(this, MyApplicationsActivity.class));
-            finish();
+        navMyApplications.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(OpenRequestsActivity.this, MyApplicationsActivity.class));
+                finish();
+            }
         });
 
-        navProfile.setOnClickListener(v -> {
-            startActivity(new Intent(this, SitterProfileActivity.class));
-            finish();
+        navProfile.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(OpenRequestsActivity.this, SitterProfileActivity.class));
+                finish();
+            }
         });
     }
 
     private void loadOpenRequests() {
         db.collection("careRequests")
                 .whereEqualTo("status", Constants.STATUS_OPEN)
-                .addSnapshotListener((queryDocumentSnapshots, error) -> {
-                    if (error != null) {
-                        Toast.makeText(getApplicationContext(), "Error loading requests: " + error.getMessage(), Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    allOpenRequests.clear();
-                    if (queryDocumentSnapshots != null) {
-                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                            CareRequest req = doc.toObject(CareRequest.class);
-                            if (req != null) {
-                                req.setRequestId(doc.getId());
-                                allOpenRequests.add(req);
+                .addSnapshotListener(new EventListener<QuerySnapshot>() {
+                    @Override
+                    public void onEvent(@Nullable QuerySnapshot queryDocumentSnapshots, @Nullable FirebaseFirestoreException error) {
+                        if (error != null) {
+                            Toast.makeText(getApplicationContext(), "Error loading requests: " + error.getMessage(), Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        allOpenRequests.clear();
+                        if (queryDocumentSnapshots != null) {
+                            for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                                CareRequest req = doc.toObject(CareRequest.class);
+                                if (req != null) {
+                                    req.setRequestId(doc.getId());
+                                    allOpenRequests.add(req);
+                                }
                             }
                         }
+                        applyFilters();
                     }
-                    applyFilters();
                 });
     }
 
@@ -160,7 +182,6 @@ public class OpenRequestsActivity extends AppCompatActivity {
             }
         }
 
-        // TODO Firebase: replace local filtering with Firestore whereEqualTo / whereLessThanOrEqualTo
         List<CareRequest> filtered = new ArrayList<>();
         for (CareRequest r : allOpenRequests) {
             boolean matchesCity = selectedCity.equals("All cities") || r.getCity().equalsIgnoreCase(selectedCity);

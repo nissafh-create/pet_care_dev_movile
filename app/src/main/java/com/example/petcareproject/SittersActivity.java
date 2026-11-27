@@ -1,6 +1,7 @@
 package com.example.petcareproject;
 
 import android.app.AlertDialog;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.graphics.Typeface;
 import android.os.Bundle;
@@ -13,9 +14,11 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
 import androidx.core.graphics.Insets;
+import androidx.core.view.OnApplyWindowInsetsListener;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -27,13 +30,18 @@ import com.example.petcareproject.models.Application;
 import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.models.User;
 import com.example.petcareproject.utils.Constants;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.QuerySnapshot;
 import com.google.firebase.firestore.WriteBatch;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 public class SittersActivity extends AppCompatActivity {
@@ -60,10 +68,14 @@ public class SittersActivity extends AppCompatActivity {
         db = FirebaseFirestore.getInstance();
         mAuth = FirebaseAuth.getInstance();
 
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), new OnApplyWindowInsetsListener() {
+            @NonNull
+            @Override
+            public WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
+                Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+                v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+                return insets;
+            }
         });
 
         tabTopSitters = findViewById(R.id.tabTopSitters);
@@ -79,11 +91,14 @@ public class SittersActivity extends AppCompatActivity {
         rvSitters.setLayoutManager(new LinearLayoutManager(this));
 
         topSitterAdapter = new TopSitterAdapter(topSittersList);
-        applicantAdapter = new ApplicantAdapter(new ArrayList<>(), application -> {
-            if (ownerOpenRequests.isEmpty()) return;
-            int pos = spRequest.getSelectedItemPosition();
-            String requestId = ownerOpenRequests.get(pos).getRequestId();
-            chooseSitter(requestId, application.getApplicationId(), application.getSitterId());
+        applicantAdapter = new ApplicantAdapter(new ArrayList<>(), new ApplicantAdapter.OnChooseClickListener() {
+            @Override
+            public void onChooseClick(Application application) {
+                if (ownerOpenRequests.isEmpty()) return;
+                int pos = spRequest.getSelectedItemPosition();
+                String requestId = ownerOpenRequests.get(pos).getRequestId();
+                chooseSitter(requestId, application.getApplicationId(), application.getSitterId());
+            }
         });
 
         setupTopSittersTab();
@@ -96,22 +111,42 @@ public class SittersActivity extends AppCompatActivity {
             showTopSittersTab();
         }
 
-        tabTopSitters.setOnClickListener(v -> showTopSittersTab());
-        tabApplicants.setOnClickListener(v -> showApplicantsTab());
-
-        navMyRequests.setOnClickListener(v -> {
-            startActivity(new Intent(this, MyRequestsActivity.class));
-            finish();
+        tabTopSitters.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showTopSittersTab();
+            }
         });
 
-        navPublish.setOnClickListener(v -> {
-            startActivity(new Intent(this, PublishRequestActivity.class));
-            finish();
+        tabApplicants.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showApplicantsTab();
+            }
         });
 
-        navProfile.setOnClickListener(v -> {
-            startActivity(new Intent(this, OwnerProfileActivity.class));
-            finish();
+        navMyRequests.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(SittersActivity.this, MyRequestsActivity.class));
+                finish();
+            }
+        });
+
+        navPublish.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(SittersActivity.this, PublishRequestActivity.class));
+                finish();
+            }
+        });
+
+        navProfile.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(SittersActivity.this, OwnerProfileActivity.class));
+                finish();
+            }
         });
     }
 
@@ -119,19 +154,27 @@ public class SittersActivity extends AppCompatActivity {
         db.collection("users")
                 .whereEqualTo("role", Constants.ROLE_SITTER)
                 .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    topSittersList.clear();
-                    if (queryDocumentSnapshots != null) {
-                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                            User u = doc.toObject(User.class);
-                            if (u != null) {
-                                u.setUserId(doc.getId());
-                                topSittersList.add(u);
+                .addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+                    @Override
+                    public void onSuccess(QuerySnapshot queryDocumentSnapshots) {
+                        topSittersList.clear();
+                        if (queryDocumentSnapshots != null) {
+                            for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                                User u = doc.toObject(User.class);
+                                if (u != null) {
+                                    u.setUserId(doc.getId());
+                                    topSittersList.add(u);
+                                }
                             }
                         }
+                        Collections.sort(topSittersList, new Comparator<User>() {
+                            @Override
+                            public int compare(User a, User b) {
+                                return Double.compare(b.getAverageRating(), a.getAverageRating());
+                            }
+                        });
+                        topSitterAdapter.notifyDataSetChanged();
                     }
-                    topSittersList.sort((a, b) -> Double.compare(b.getAverageRating(), a.getAverageRating()));
-                    topSitterAdapter.notifyDataSetChanged();
                 });
     }
 
@@ -143,36 +186,39 @@ public class SittersActivity extends AppCompatActivity {
                 .whereEqualTo("ownerId", currentUser.getUid())
                 .whereEqualTo("status", Constants.STATUS_OPEN)
                 .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    ownerOpenRequests.clear();
-                    List<String> labels = new ArrayList<>();
-                    if (queryDocumentSnapshots != null) {
-                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                            CareRequest r = doc.toObject(CareRequest.class);
-                            if (r != null) {
-                                r.setRequestId(doc.getId());
-                                ownerOpenRequests.add(r);
-                                labels.add(r.getPetName() + ", " + r.getPetSpecies() + " (" + r.getStartDate() + " → " + r.getEndDate() + ")");
+                .addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+                    @Override
+                    public void onSuccess(QuerySnapshot queryDocumentSnapshots) {
+                        ownerOpenRequests.clear();
+                        List<String> labels = new ArrayList<>();
+                        if (queryDocumentSnapshots != null) {
+                            for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                                CareRequest r = doc.toObject(CareRequest.class);
+                                if (r != null) {
+                                    r.setRequestId(doc.getId());
+                                    ownerOpenRequests.add(r);
+                                    labels.add(r.getPetName() + ", " + r.getPetSpecies() + " (" + r.getStartDate() + " → " + r.getEndDate() + ")");
+                                }
                             }
                         }
-                    }
-                    if (labels.isEmpty()) {
-                        labels.add("No open requests");
-                    }
-                    ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(SittersActivity.this, android.R.layout.simple_spinner_item, labels);
-                    spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
-                    spRequest.setAdapter(spinnerAdapter);
-
-                    spRequest.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
-                        @Override
-                        public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
-                            loadApplicantsForSelectedRequest();
+                        if (labels.isEmpty()) {
+                            labels.add("No open requests");
                         }
+                        ArrayAdapter<String> spinnerAdapter = new ArrayAdapter<>(SittersActivity.this, android.R.layout.simple_spinner_item, labels);
+                        spinnerAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+                        spRequest.setAdapter(spinnerAdapter);
 
-                        @Override
-                        public void onNothingSelected(AdapterView<?> parent) {
-                        }
-                    });
+                        spRequest.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+                            @Override
+                            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                                loadApplicantsForSelectedRequest();
+                            }
+
+                            @Override
+                            public void onNothingSelected(AdapterView<?> parent) {
+                            }
+                        });
+                    }
                 });
     }
 
@@ -188,18 +234,21 @@ public class SittersActivity extends AppCompatActivity {
         db.collection("applications")
                 .whereEqualTo("requestId", reqId)
                 .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    List<Application> list = new ArrayList<>();
-                    if (queryDocumentSnapshots != null) {
-                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                            Application app = doc.toObject(Application.class);
-                            if (app != null) {
-                                app.setApplicationId(doc.getId());
-                                list.add(app);
+                .addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+                    @Override
+                    public void onSuccess(QuerySnapshot queryDocumentSnapshots) {
+                        List<Application> list = new ArrayList<>();
+                        if (queryDocumentSnapshots != null) {
+                            for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                                Application app = doc.toObject(Application.class);
+                                if (app != null) {
+                                    app.setApplicationId(doc.getId());
+                                    list.add(app);
+                                }
                             }
                         }
+                        applicantAdapter.updateList(list);
                     }
-                    applicantAdapter.updateList(list);
                 });
     }
 
@@ -225,63 +274,88 @@ public class SittersActivity extends AppCompatActivity {
     }
 
     // Hard flow A6: WriteBatch -> chosen application accepted, other applications rejected, request confirmed
-    private void chooseSitter(String requestId, String chosenApplicationId, String chosenSitterId) {
+    private void chooseSitter(final String requestId, final String chosenApplicationId, final String chosenSitterId) {
         db.collection("applications")
                 .whereEqualTo("requestId", requestId)
                 .get()
-                .addOnSuccessListener(queryDocumentSnapshots -> {
-                    WriteBatch batch = db.batch();
-                    if (queryDocumentSnapshots != null) {
-                        for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                            if (doc.getId().equals(chosenApplicationId)) {
-                                batch.update(doc.getReference(), "status", Constants.APP_ACCEPTED);
-                            } else {
-                                batch.update(doc.getReference(), "status", Constants.APP_REJECTED);
+                .addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+                    @Override
+                    public void onSuccess(QuerySnapshot queryDocumentSnapshots) {
+                        WriteBatch batch = db.batch();
+                        if (queryDocumentSnapshots != null) {
+                            for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                                if (doc.getId().equals(chosenApplicationId)) {
+                                    batch.update(doc.getReference(), "status", Constants.APP_ACCEPTED);
+                                } else {
+                                    batch.update(doc.getReference(), "status", Constants.APP_REJECTED);
+                                }
                             }
                         }
-                    }
-                    batch.update(db.collection("careRequests").document(requestId),
-                            "status", Constants.STATUS_CONFIRMED,
-                            "chosenSitterId", chosenSitterId);
+                        batch.update(db.collection("careRequests").document(requestId),
+                                "status", Constants.STATUS_CONFIRMED,
+                                "chosenSitterId", chosenSitterId);
 
-                    batch.commit()
-                            .addOnSuccessListener(aVoid -> {
-                                Toast.makeText(getApplicationContext(), "Sitter chosen! Request confirmed.", Toast.LENGTH_LONG).show();
-                                setupApplicantsTab();
-                            })
-                            .addOnFailureListener(e -> Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
+                        batch.commit()
+                                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                                    @Override
+                                    public void onSuccess(Void aVoid) {
+                                        Toast.makeText(getApplicationContext(), "Sitter chosen! Request confirmed.", Toast.LENGTH_LONG).show();
+                                        setupApplicantsTab();
+                                    }
+                                })
+                                .addOnFailureListener(new OnFailureListener() {
+                                    @Override
+                                    public void onFailure(@NonNull Exception e) {
+                                        Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                    }
+                                });
+                    }
                 });
     }
 
     // Screen 5 (A7): WriteBatch -> cancel request and reject pending applications
-    public static void cancelRequest(AppCompatActivity activity, String requestId, Runnable onCancelled) {
+    public static void cancelRequest(final AppCompatActivity activity, final String requestId, final Runnable onCancelled) {
         new AlertDialog.Builder(activity)
                 .setTitle("Cancel Request")
                 .setMessage("Are you sure you want to cancel this request?")
-                .setPositiveButton("Yes", (dialog, which) -> {
-                    FirebaseFirestore db = FirebaseFirestore.getInstance();
-                    db.collection("applications")
-                            .whereEqualTo("requestId", requestId)
-                            .get()
-                            .addOnSuccessListener(queryDocumentSnapshots -> {
-                                WriteBatch batch = db.batch();
-                                batch.update(db.collection("careRequests").document(requestId), "status", Constants.STATUS_CANCELLED);
-                                if (queryDocumentSnapshots != null) {
-                                    for (DocumentSnapshot doc : queryDocumentSnapshots) {
-                                        if (Constants.APP_PENDING.equals(doc.getString("status"))) {
-                                            batch.update(doc.getReference(), "status", Constants.APP_REJECTED);
-                                        }
-                                    }
-                                }
-                                batch.commit()
-                                        .addOnSuccessListener(aVoid -> {
-                                            Toast.makeText(activity.getApplicationContext(), "Request cancelled", Toast.LENGTH_LONG).show();
-                                            if (onCancelled != null) {
-                                                onCancelled.run();
+                .setPositiveButton("Yes", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        final FirebaseFirestore db = FirebaseFirestore.getInstance();
+                        db.collection("applications")
+                                .whereEqualTo("requestId", requestId)
+                                .get()
+                                .addOnSuccessListener(new OnSuccessListener<QuerySnapshot>() {
+                                    @Override
+                                    public void onSuccess(QuerySnapshot queryDocumentSnapshots) {
+                                        WriteBatch batch = db.batch();
+                                        batch.update(db.collection("careRequests").document(requestId), "status", Constants.STATUS_CANCELLED);
+                                        if (queryDocumentSnapshots != null) {
+                                            for (DocumentSnapshot doc : queryDocumentSnapshots) {
+                                                if (Constants.APP_PENDING.equals(doc.getString("status"))) {
+                                                    batch.update(doc.getReference(), "status", Constants.APP_REJECTED);
+                                                }
                                             }
-                                        })
-                                        .addOnFailureListener(e -> Toast.makeText(activity.getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show());
-                            });
+                                        }
+                                        batch.commit()
+                                                .addOnSuccessListener(new OnSuccessListener<Void>() {
+                                                    @Override
+                                                    public void onSuccess(Void aVoid) {
+                                                        Toast.makeText(activity.getApplicationContext(), "Request cancelled", Toast.LENGTH_LONG).show();
+                                                        if (onCancelled != null) {
+                                                            onCancelled.run();
+                                                        }
+                                                    }
+                                                })
+                                                .addOnFailureListener(new OnFailureListener() {
+                                                    @Override
+                                                    public void onFailure(@NonNull Exception e) {
+                                                        Toast.makeText(activity.getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                                                    }
+                                                });
+                                    }
+                                });
+                    }
                 })
                 .setNegativeButton("No", null)
                 .show();

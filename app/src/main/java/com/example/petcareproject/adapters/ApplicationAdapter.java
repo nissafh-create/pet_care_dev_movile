@@ -13,6 +13,8 @@ import com.example.petcareproject.R;
 import com.example.petcareproject.models.Application;
 import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.utils.Constants;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.List;
@@ -50,13 +52,16 @@ public class ApplicationAdapter extends RecyclerView.Adapter<ApplicationAdapter.
 
         if (app.getRequestId() != null) {
             db.collection("careRequests").document(app.getRequestId()).get()
-                    .addOnSuccessListener(doc -> {
-                        if (doc.exists()) {
-                            CareRequest req = doc.toObject(CareRequest.class);
-                            if (req != null) {
-                                holder.tvPetInfo.setText(req.getPetName() + " • " + req.getPetSpecies());
-                                holder.tvCityDates.setText(req.getCity() + " • " + req.getStartDate() + " → " + req.getEndDate());
-                                holder.tvPrice.setText((int) req.getPricePerDay() + " TND/day");
+                    .addOnSuccessListener(new OnSuccessListener<DocumentSnapshot>() {
+                        @Override
+                        public void onSuccess(DocumentSnapshot doc) {
+                            if (doc.exists()) {
+                                CareRequest req = doc.toObject(CareRequest.class);
+                                if (req != null) {
+                                    holder.tvPetInfo.setText(req.getPetName() + " • " + req.getPetSpecies());
+                                    holder.tvCityDates.setText(req.getCity() + " • " + req.getStartDate() + " → " + req.getEndDate());
+                                    holder.tvPrice.setText((int) req.getPricePerDay() + " TND/day");
+                                }
                             }
                         }
                     });
@@ -71,9 +76,12 @@ public class ApplicationAdapter extends RecyclerView.Adapter<ApplicationAdapter.
             holder.tvAppStatus.setTextColor(ContextCompat.getColor(holder.itemView.getContext(), R.color.brown));
         }
 
-        holder.itemView.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onApplicationClick(app);
+        holder.itemView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (listener != null) {
+                    listener.onApplicationClick(app);
+                }
             }
         });
     }

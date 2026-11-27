@@ -2,12 +2,16 @@ package com.example.petcareproject;
 
 import android.content.Intent;
 import android.os.Bundle;
+import android.view.View;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
+import androidx.core.view.OnApplyWindowInsetsListener;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -18,7 +22,10 @@ import com.example.petcareproject.models.Application;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
 import com.google.firebase.firestore.DocumentSnapshot;
+import com.google.firebase.firestore.EventListener;
 import com.google.firebase.firestore.FirebaseFirestore;
+import com.google.firebase.firestore.FirebaseFirestoreException;
+import com.google.firebase.firestore.QuerySnapshot;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,10 +48,14 @@ public class MyApplicationsActivity extends AppCompatActivity {
         db = FirebaseFirestore.getInstance();
         mAuth = FirebaseAuth.getInstance();
 
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), new OnApplyWindowInsetsListener() {
+            @NonNull
+            @Override
+            public WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
+                Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+                v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+                return insets;
+            }
         });
 
         rvMyApplications = findViewById(R.id.rvMyApplications);
@@ -53,23 +64,32 @@ public class MyApplicationsActivity extends AppCompatActivity {
         navProfile = findViewById(R.id.navProfile);
 
         rvMyApplications.setLayoutManager(new LinearLayoutManager(this));
-        adapter = new ApplicationAdapter(applicationList, application -> {
-            Intent intent = new Intent(MyApplicationsActivity.this, RequestDetailSitterActivity.class);
-            intent.putExtra("requestId", application.getRequestId());
-            startActivity(intent);
+        adapter = new ApplicationAdapter(applicationList, new ApplicationAdapter.OnApplicationClickListener() {
+            @Override
+            public void onApplicationClick(Application application) {
+                Intent intent = new Intent(MyApplicationsActivity.this, RequestDetailSitterActivity.class);
+                intent.putExtra("requestId", application.getRequestId());
+                startActivity(intent);
+            }
         });
         rvMyApplications.setAdapter(adapter);
 
         loadMyApplications();
 
-        navOpenRequests.setOnClickListener(v -> {
-            startActivity(new Intent(this, OpenRequestsActivity.class));
-            finish();
+        navOpenRequests.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MyApplicationsActivity.this, OpenRequestsActivity.class));
+                finish();
+            }
         });
 
-        navProfile.setOnClickListener(v -> {
-            startActivity(new Intent(this, SitterProfileActivity.class));
-            finish();
+        navProfile.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(MyApplicationsActivity.this, SitterProfileActivity.class));
+                finish();
+            }
         });
     }
 
@@ -79,22 +99,25 @@ public class MyApplicationsActivity extends AppCompatActivity {
 
         db.collection("applications")
                 .whereEqualTo("sitterId", currentUser.getUid())
-                .addSnapshotListener((snapshots, e) -> {
-                    if (e != null) {
-                        Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
-                        return;
-                    }
-                    applicationList.clear();
-                    if (snapshots != null) {
-                        for (DocumentSnapshot doc : snapshots) {
-                            Application app = doc.toObject(Application.class);
-                            if (app != null) {
-                                app.setApplicationId(doc.getId());
-                                applicationList.add(app);
+                .addSnapshotListener(new EventListener<QuerySnapshot>() {
+                    @Override
+                    public void onEvent(@Nullable QuerySnapshot snapshots, @Nullable FirebaseFirestoreException e) {
+                        if (e != null) {
+                            Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+                            return;
+                        }
+                        applicationList.clear();
+                        if (snapshots != null) {
+                            for (DocumentSnapshot doc : snapshots) {
+                                Application app = doc.toObject(Application.class);
+                                if (app != null) {
+                                    app.setApplicationId(doc.getId());
+                                    applicationList.add(app);
+                                }
                             }
                         }
+                        adapter.notifyDataSetChanged();
                     }
-                    adapter.notifyDataSetChanged();
                 });
     }
 }

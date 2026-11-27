@@ -11,6 +11,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.petcareproject.R;
 import com.example.petcareproject.models.Review;
 import com.example.petcareproject.models.User;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.List;
@@ -38,9 +40,12 @@ public class ReviewAdapter extends RecyclerView.Adapter<ReviewAdapter.ReviewView
 
         if (review.getOwnerId() != null) {
             FirebaseFirestore.getInstance().collection("users").document(review.getOwnerId()).get()
-                    .addOnSuccessListener(doc -> {
-                        if (doc.exists() && doc.getString("fullName") != null) {
-                            holder.tvReviewerName.setText(doc.getString("fullName"));
+                    .addOnSuccessListener(new OnSuccessListener<DocumentSnapshot>() {
+                        @Override
+                        public void onSuccess(DocumentSnapshot doc) {
+                            if (doc.exists() && doc.getString("fullName") != null) {
+                                holder.tvReviewerName.setText(doc.getString("fullName"));
+                            }
                         }
                     });
         }

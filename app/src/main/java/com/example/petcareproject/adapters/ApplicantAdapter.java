@@ -12,6 +12,8 @@ import androidx.recyclerview.widget.RecyclerView;
 import com.example.petcareproject.R;
 import com.example.petcareproject.models.Application;
 import com.example.petcareproject.models.User;
+import com.google.android.gms.tasks.OnSuccessListener;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 
 import java.util.List;
@@ -57,28 +59,34 @@ public class ApplicantAdapter extends RecyclerView.Adapter<ApplicantAdapter.Appl
 
         if (app.getSitterId() != null) {
             FirebaseFirestore.getInstance().collection("users").document(app.getSitterId()).get()
-                    .addOnSuccessListener(doc -> {
-                        if (doc.exists()) {
-                            User sitter = doc.toObject(User.class);
-                            if (sitter != null) {
-                                holder.tvSitterName.setText(sitter.getFullName());
-                                if (sitter.getFullName() != null && !sitter.getFullName().isEmpty()) {
-                                    holder.tvInitial.setText(String.valueOf(sitter.getFullName().charAt(0)).toUpperCase());
+                    .addOnSuccessListener(new OnSuccessListener<DocumentSnapshot>() {
+                        @Override
+                        public void onSuccess(DocumentSnapshot doc) {
+                            if (doc.exists()) {
+                                User sitter = doc.toObject(User.class);
+                                if (sitter != null) {
+                                    holder.tvSitterName.setText(sitter.getFullName());
+                                    if (sitter.getFullName() != null && !sitter.getFullName().isEmpty()) {
+                                        holder.tvInitial.setText(String.valueOf(sitter.getFullName().charAt(0)).toUpperCase());
+                                    }
+                                    holder.tvSitterCity.setText(sitter.getCity());
+                                    holder.tvBadge.setText(sitter.getBadge());
+                                    String ratingText = sitter.getCompletedCount() > 0
+                                            ? String.valueOf(sitter.getAverageRating())
+                                            : "–";
+                                    holder.tvRatingStays.setText("★ " + ratingText + " • " + sitter.getCompletedCount() + " stays");
                                 }
-                                holder.tvSitterCity.setText(sitter.getCity());
-                                holder.tvBadge.setText(sitter.getBadge());
-                                String ratingText = sitter.getCompletedCount() > 0
-                                        ? String.valueOf(sitter.getAverageRating())
-                                        : "–";
-                                holder.tvRatingStays.setText("★ " + ratingText + " • " + sitter.getCompletedCount() + " stays");
                             }
                         }
                     });
         }
 
-        holder.btnChoose.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onChooseClick(app);
+        holder.btnChoose.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (listener != null) {
+                    listener.onChooseClick(app);
+                }
             }
         });
     }

@@ -44,9 +44,12 @@ public class PetAdapter extends RecyclerView.Adapter<PetAdapter.PetViewHolder> {
     public void onBindViewHolder(@NonNull PetViewHolder holder, int position) {
         Pet pet = petList.get(position);
         holder.tvPetNameSpecies.setText(pet.getName() + " • " + pet.getSpecies());
-        holder.tvEditPet.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onEditPet(pet);
+        holder.tvEditPet.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (listener != null) {
+                    listener.onEditPet(pet);
+                }
             }
         });
     }

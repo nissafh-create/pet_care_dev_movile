@@ -48,9 +48,12 @@ public class CareRequestAdapter extends RecyclerView.Adapter<CareRequestAdapter.
         holder.tvPrice.setText((int) request.getPricePerDay() + " TND/day");
         holder.tvStatus.setText(request.getStatus());
 
-        holder.itemView.setOnClickListener(v -> {
-            if (listener != null) {
-                listener.onRequestClick(request);
+        holder.itemView.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (listener != null) {
+                    listener.onRequestClick(request);
+                }
             }
         });
     }

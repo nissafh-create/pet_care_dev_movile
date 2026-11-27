@@ -1,6 +1,7 @@
 package com.example.petcareproject;
 
 import android.os.Bundle;
+import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.EditText;
@@ -9,14 +10,20 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.EdgeToEdge;
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.graphics.Insets;
+import androidx.core.view.OnApplyWindowInsetsListener;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
 import com.example.petcareproject.models.Pet;
+import com.google.android.gms.tasks.OnFailureListener;
+import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
+import com.google.firebase.firestore.DocumentReference;
+import com.google.firebase.firestore.DocumentSnapshot;
 import com.google.firebase.firestore.FirebaseFirestore;
 
 public class AddEditPetActivity extends AppCompatActivity {
@@ -40,10 +47,14 @@ public class AddEditPetActivity extends AppCompatActivity {
         db = FirebaseFirestore.getInstance();
         mAuth = FirebaseAuth.getInstance();
 
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
-            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-            v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
-            return insets;
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), new OnApplyWindowInsetsListener() {
+            @NonNull
+            @Override
+            public WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
+                Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+                v.setPadding(systemBars.left, systemBars.top, systemBars.right, systemBars.bottom);
+                return insets;
+            }
         });
 
         tvBack = findViewById(R.id.tvBack);
@@ -65,25 +76,39 @@ public class AddEditPetActivity extends AppCompatActivity {
             loadPet(petId);
         }
 
-        tvBack.setOnClickListener(v -> finish());
-        btnSavePet.setOnClickListener(v -> savePet());
+        tvBack.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                finish();
+            }
+        });
+
+        btnSavePet.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                savePet();
+            }
+        });
     }
 
     private void loadPet(String id) {
         db.collection("pets").document(id).get()
-                .addOnSuccessListener(doc -> {
-                    if (doc.exists()) {
-                        Pet pet = doc.toObject(Pet.class);
-                        if (pet != null) {
-                            etPetName.setText(pet.getName());
-                            etBreed.setText(pet.getBreed());
-                            etAge.setText(String.valueOf(pet.getAge()));
-                            etSpecialNeeds.setText(pet.getSpecialNeeds());
+                .addOnSuccessListener(new OnSuccessListener<DocumentSnapshot>() {
+                    @Override
+                    public void onSuccess(DocumentSnapshot doc) {
+                        if (doc.exists()) {
+                            Pet pet = doc.toObject(Pet.class);
+                            if (pet != null) {
+                                etPetName.setText(pet.getName());
+                                etBreed.setText(pet.getBreed());
+                                etAge.setText(String.valueOf(pet.getAge()));
+                                etSpecialNeeds.setText(pet.getSpecialNeeds());
 
-                            for (int i = 0; i < speciesList.length; i++) {
-                                if (speciesList[i].equalsIgnoreCase(pet.getSpecies())) {
-                                    spSpecies.setSelection(i);
-                                    break;
+                                for (int i = 0; i < speciesList.length; i++) {
+                                    if (speciesList[i].equalsIgnoreCase(pet.getSpecies())) {
+                                        spSpecies.setSelection(i);
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -124,25 +149,37 @@ public class AddEditPetActivity extends AppCompatActivity {
 
         if (petId == null || petId.isEmpty()) {
             db.collection("pets").add(pet)
-                    .addOnSuccessListener(docRef -> {
-                        docRef.update("petId", docRef.getId());
-                        Toast.makeText(getApplicationContext(), "Pet saved!", Toast.LENGTH_LONG).show();
-                        finish();
+                    .addOnSuccessListener(new OnSuccessListener<DocumentReference>() {
+                        @Override
+                        public void onSuccess(DocumentReference docRef) {
+                            docRef.update("petId", docRef.getId());
+                            Toast.makeText(getApplicationContext(), "Pet saved!", Toast.LENGTH_LONG).show();
+                            finish();
+                        }
                     })
-                    .addOnFailureListener(e -> {
-                        btnSavePet.setEnabled(true);
-                        Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    .addOnFailureListener(new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            btnSavePet.setEnabled(true);
+                            Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        }
                     });
         } else {
             pet.setPetId(petId);
             db.collection("pets").document(petId).set(pet)
-                    .addOnSuccessListener(aVoid -> {
-                        Toast.makeText(getApplicationContext(), "Pet updated!", Toast.LENGTH_LONG).show();
-                        finish();
+                    .addOnSuccessListener(new OnSuccessListener<Void>() {
+                        @Override
+                        public void onSuccess(Void aVoid) {
+                            Toast.makeText(getApplicationContext(), "Pet updated!", Toast.LENGTH_LONG).show();
+                            finish();
+                        }
                     })
-                    .addOnFailureListener(e -> {
-                        btnSavePet.setEnabled(true);
-                        Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                    .addOnFailureListener(new OnFailureListener() {
+                        @Override
+                        public void onFailure(@NonNull Exception e) {
+                            btnSavePet.setEnabled(true);
+                            Toast.makeText(getApplicationContext(), "Error: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                        }
                     });
         }
     }
