@@ -1,0 +1,95 @@
+package com.example.petcareproject;
+
+import android.content.Intent;
+import android.os.Bundle;
+import android.widget.Button;
+import android.widget.EditText;
+import android.widget.RadioButton;
+import android.widget.TextView;
+
+import androidx.activity.EdgeToEdge;
+import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
+
+public class SignUpActivity extends AppCompatActivity {
+
+    private EditText fullName, email, phone, city, password, confirmPassword, bio;
+    private RadioButton rbOwner;
+    private Button btnSignUp;
+    private TextView tvLogin;
+
+    @Override
+    protected void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        EdgeToEdge.enable(this);
+        setContentView(R.layout.activity_sign_up);
+
+        int pad = (int) (24 * getResources().getDisplayMetrics().density);
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), (v, insets) -> {
+            Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
+            v.setPadding(systemBars.left + pad, systemBars.top + pad,
+                    systemBars.right + pad, systemBars.bottom + pad);
+            return insets;
+        });
+
+        fullName = findViewById(R.id.fullName);
+        email = findViewById(R.id.email);
+        phone = findViewById(R.id.phone);
+        city = findViewById(R.id.city);
+        password = findViewById(R.id.password);
+        confirmPassword = findViewById(R.id.confirmPassword);
+        bio = findViewById(R.id.bio);
+        rbOwner = findViewById(R.id.rbOwner);
+        btnSignUp = findViewById(R.id.btnSignUp);
+        tvLogin = findViewById(R.id.tvLogin);
+
+        btnSignUp.setOnClickListener(v -> {
+            String name = fullName.getText().toString().trim();
+            String emailText = email.getText().toString().trim();
+            String phoneText = phone.getText().toString().trim();
+            String cityText = city.getText().toString().trim();
+            String pass = password.getText().toString();
+            String confirm = confirmPassword.getText().toString();
+            String role = rbOwner.isChecked() ? "owner" : "sitter";
+
+            if (name.isEmpty()) {
+                fullName.setError("Full name is required");
+                return;
+            }
+            if (emailText.isEmpty()) {
+                email.setError("Email is required");
+                return;
+            }
+            if (phoneText.isEmpty()) {
+                phone.setError("Phone is required");
+                return;
+            }
+            if (cityText.isEmpty()) {
+                city.setError("City is required");
+                return;
+            }
+            if (pass.length() < 6) {
+                password.setError("At least 6 characters");
+                return;
+            }
+            if (!pass.equals(confirm)) {
+                confirmPassword.setError("Passwords don't match");
+                return;
+            }
+
+            // TODO Firebase: createUserWithEmailAndPassword and save user in Firestore
+            if (rbOwner.isChecked()) {
+                startActivity(new Intent(SignUpActivity.this, MyRequestsActivity.class));
+            } else {
+                startActivity(new Intent(SignUpActivity.this, OpenRequestsActivity.class));
+            }
+            finish();
+        });
+
+        tvLogin.setOnClickListener(v ->
+                finish()
+        );
+    }
+}
