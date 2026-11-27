@@ -13,8 +13,8 @@ public class Application {
     public Application() {
     }
 
-    public Application(String applicationId, String requestId, String sitterId, String sitterName,
-                       String message, String status) {
+    public Application(String applicationId, String requestId, String sitterId, String sitterName, String message,
+            String status) {
         this.applicationId = applicationId;
         this.requestId = requestId;
         this.sitterId = sitterId;
@@ -24,24 +24,59 @@ public class Application {
         this.createdAt = System.currentTimeMillis();
     }
 
-    public String getApplicationId() { return applicationId; }
-    public void setApplicationId(String applicationId) { this.applicationId = applicationId; }
+    public String getApplicationId() {
+        return applicationId;
+    }
 
-    public String getRequestId() { return requestId; }
-    public void setRequestId(String requestId) { this.requestId = requestId; }
+    public void setApplicationId(String applicationId) {
+        this.applicationId = applicationId;
+    }
 
-    public String getSitterId() { return sitterId; }
-    public void setSitterId(String sitterId) { this.sitterId = sitterId; }
+    public String getRequestId() {
+        return requestId;
+    }
 
-    public String getSitterName() { return sitterName; }
-    public void setSitterName(String sitterName) { this.sitterName = sitterName; }
+    public void setRequestId(String requestId) {
+        this.requestId = requestId;
+    }
 
-    public String getMessage() { return message; }
-    public void setMessage(String message) { this.message = message; }
+    public String getSitterId() {
+        return sitterId;
+    }
 
-    public String getStatus() { return status; }
-    public void setStatus(String status) { this.status = status; }
+    public void setSitterId(String sitterId) {
+        this.sitterId = sitterId;
+    }
 
-    public long getCreatedAt() { return createdAt; }
-    public void setCreatedAt(long createdAt) { this.createdAt = createdAt; }
+    public String getSitterName() {
+        return sitterName;
+    }
+
+    public void setSitterName(String sitterName) {
+        this.sitterName = sitterName;
+    }
+
+    public String getMessage() {
+        return message;
+    }
+
+    public void setMessage(String message) {
+        this.message = message;
+    }
+
+    public String getStatus() {
+        return status;
+    }
+
+    public void setStatus(String status) {
+        this.status = status;
+    }
+
+    public long getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(long createdAt) {
+        this.createdAt = createdAt;
+    }
 }

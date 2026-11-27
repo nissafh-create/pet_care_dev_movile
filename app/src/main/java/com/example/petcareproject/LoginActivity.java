@@ -8,13 +8,8 @@ import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import androidx.activity.EdgeToEdge;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.OnApplyWindowInsetsListener;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 import com.example.petcareproject.utils.Constants;
 import com.google.android.gms.tasks.OnFailureListener;
@@ -36,7 +31,6 @@ public class LoginActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        EdgeToEdge.enable(this);
         setContentView(R.layout.activity_login);
 
         mAuth = FirebaseAuth.getInstance();
@@ -47,18 +41,6 @@ public class LoginActivity extends AppCompatActivity {
         if (currentUser != null) {
             checkUserRoleAndRedirect(currentUser.getUid());
         }
-
-        int pad = (int) (24 * getResources().getDisplayMetrics().density);
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.main), new OnApplyWindowInsetsListener() {
-            @NonNull
-            @Override
-            public WindowInsetsCompat onApplyWindowInsets(@NonNull View v, @NonNull WindowInsetsCompat insets) {
-                Insets systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars());
-                v.setPadding(systemBars.left + pad, systemBars.top + pad,
-                        systemBars.right + pad, systemBars.bottom + pad);
-                return insets;
-            }
-        });
 
         email = findViewById(R.id.email);
         password = findViewById(R.id.password);

@@ -24,7 +24,7 @@ import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.models.Pet;
 import com.example.petcareproject.models.User;
 import com.example.petcareproject.utils.Constants;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.example.petcareproject.utils.DateUtils;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
@@ -178,7 +178,7 @@ public class RequestDetailOwnerActivity extends AppCompatActivity {
                         tvStatus.setText(currentRequest.getStatus());
                         tvCityDates.setText(currentRequest.getCity() + " • " + currentRequest.getStartDate() + " → " + currentRequest.getEndDate());
 
-                        long days = FakeDataManager.calculateDays(currentRequest.getStartDate(), currentRequest.getEndDate());
+                        long days = DateUtils.calculateDays(currentRequest.getStartDate(), currentRequest.getEndDate());
                         int total = (int) (days * currentRequest.getPricePerDay());
                         tvPriceTotal.setText((int) currentRequest.getPricePerDay() + " TND/day • " + total + " TND total");
                         tvDescription.setText(currentRequest.getDescription());

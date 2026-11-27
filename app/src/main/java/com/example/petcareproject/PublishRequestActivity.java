@@ -25,7 +25,7 @@ import androidx.core.view.WindowInsetsCompat;
 import com.example.petcareproject.models.CareRequest;
 import com.example.petcareproject.models.Pet;
 import com.example.petcareproject.utils.Constants;
-import com.example.petcareproject.utils.FakeDataManager;
+import com.example.petcareproject.utils.DateUtils;
 import com.google.android.gms.tasks.OnFailureListener;
 import com.google.android.gms.tasks.OnSuccessListener;
 import com.google.firebase.auth.FirebaseAuth;
@@ -216,7 +216,7 @@ public class PublishRequestActivity extends AppCompatActivity {
             return;
         }
 
-        long days = FakeDataManager.calculateDays(start, end);
+        long days = DateUtils.calculateDays(start, end);
         double price = 0;
         try {
             price = Double.parseDouble(priceStr);
